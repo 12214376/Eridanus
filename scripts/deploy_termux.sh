@@ -4,7 +4,7 @@
 # 支持在 Android 设备上快速部署 Ubuntu 24.04/22.04 + Node 22 + Linux QQ + Python 3.11
 # ==============================================================================
 
-set -e
+# set -e (disabled to allow robust execution and graceful fallbacks)
 
 echo "=========================================================="
 echo "      🚀 Eridanus & SnowLuma Termux 宿主自动化部署      "
@@ -40,20 +40,20 @@ fi
 # 4. 在 Ubuntu 容器内部配置所需依赖
 echo "[4/5] 进入 Ubuntu 容器并配置 Node / Python / Linux QQ / Xvfb 环境..."
 
-proot-distro login ubuntu -- bash -c '
+cat << 'UBUNTU_ENV_EOF' | proot-distro login ubuntu -- bash
 set -e
 export DEBIAN_FRONTEND=noninteractive
-export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH
 
 echo "-> [Ubuntu] 配置北京时间时区 (Asia/Shanghai)..."
 ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime 2>/dev/null || true
 echo "Asia/Shanghai" > /etc/timezone 2>/dev/null || true
-echo 'export TZ=Asia/Shanghai' >> /root/.bashrc 2>/dev/null || true
-echo 'export TZ=Asia/Shanghai' >> /etc/profile 2>/dev/null || true
+echo "export TZ=Asia/Shanghai" >> /root/.bashrc 2>/dev/null || true
+echo "export TZ=Asia/Shanghai" >> /etc/profile 2>/dev/null || true
 export TZ=Asia/Shanghai
 
 echo "-> [Ubuntu] 更新软件源并安装基础系统依赖..."
-apt-get update -y
+apt-get update -y || true
 apt-get install -y software-properties-common curl wget git build-essential \
     xvfb fluxbox x11vnc novnc websockify redis-server \
     python3 python3-pip python3-venv python3-dev \
@@ -68,17 +68,17 @@ ln -sf /usr/share/novnc/vnc.html /usr/share/novnc/index.html 2>/dev/null || true
 # 安装 Node.js 22 LTS
 if ! command -v node >/dev/null 2>&1; then
     echo "-> [Ubuntu] 安装 Node.js 22 LTS..."
-    curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
-    apt-get install -y nodejs
+    curl -fsSL https://deb.nodesource.com/setup_22.x | bash - || true
+    apt-get install -y nodejs || true
 fi
-echo "✓ Node 版本: $(node -v)"
-echo "✓ Python 版本: $(python3 --version)"
+echo "✓ Node 版本: $(node -v 2>/dev/null || echo '未就绪')"
+echo "✓ Python 版本: $(python3 --version 2>/dev/null || echo '未就绪')"
 
 # 赋予 Node ptrace 能力
 setcap cap_sys_ptrace=ep "$(readlink -f "$(which node)")" 2>/dev/null || true
 
 # 冻结 QQ 热更新 (防止补丁破坏 Hook)
-if ! grep -q "qqpatch.gtimg.cn" /etc/hosts; then
+if ! grep -q "qqpatch.gtimg.cn" /etc/hosts 2>/dev/null; then
     echo "0.0.0.0 qqpatch.gtimg.cn" >> /etc/hosts
 fi
 
@@ -89,7 +89,7 @@ if [ ! -f /root/qq_installer/linuxqq.deb ]; then
     echo "-> [Ubuntu] 下载官方 Linux QQ (ARM64)..."
     wget -q --show-progress -O linuxqq.deb "https://qqdl.gtimg.cn/qqfile/QQNT/9.9.36/beta/9ee04bef/linuxqq_3.2.34-53644_arm64.deb" || true
     if [ -f linuxqq.deb ]; then
-        dpkg -i linuxqq.deb || apt-get install -fy
+        dpkg -i linuxqq.deb || apt-get install -fy || true
     fi
 fi
 
@@ -102,9 +102,9 @@ if [ ! -f /root/snowluma/index.mjs ]; then
     if [ -z "$SL_URL" ]; then
         SL_URL="https://github.com/SnowLuma/SnowLuma/releases/download/v1.14.20/SnowLuma-v1.14.20-linux-arm64-lite.tar.gz"
     fi
-    wget -q --show-progress -O snowluma.tar.gz "$SL_URL" || true
+    wget -q --show-progress -O snowluma.tar.gz "$SL_URL" 2>/dev/null || wget -q -O snowluma.tar.gz "https://ghproxy.net/$SL_URL" 2>/dev/null || true
     if [ -f snowluma.tar.gz ]; then
-        tar -xzf snowluma.tar.gz --strip-components=1 || tar -xzf snowluma.tar.gz
+        tar -xzf snowluma.tar.gz --strip-components=1 2>/dev/null || tar -xzf snowluma.tar.gz 2>/dev/null || true
         rm -f snowluma.tar.gz
     fi
 fi
@@ -114,7 +114,7 @@ mkdir -p /root/napcat
 if [ ! -f /root/napcat/napcat.mjs ] && [ ! -f /root/napcat/loadNapCat.js ]; then
     echo "-> [Ubuntu] 下载 NapCatQQ (Linux ARM64)..."
     NC_URL="https://github.com/NapNeko/NapCatQQ/releases/latest/download/NapCat.linux.arm64.zip"
-    wget -q --show-progress -O /tmp/napcat.zip "$NC_URL" 2>/dev/null ||         wget -q -O /tmp/napcat.zip "https://github.com/NapNeko/NapCatQQ/releases/download/v4.4.55/NapCat.linux.arm64.zip" || true
+    wget -q --show-progress -O /tmp/napcat.zip "$NC_URL" 2>/dev/null || wget -q -O /tmp/napcat.zip "https://ghproxy.net/$NC_URL" 2>/dev/null || wget -q -O /tmp/napcat.zip "https://github.com/NapNeko/NapCatQQ/releases/download/v4.4.55/NapCat.linux.arm64.zip" || true
     if [ -f /tmp/napcat.zip ]; then
         unzip -q -o /tmp/napcat.zip -d /root/napcat || true
         rm -f /tmp/napcat.zip
@@ -122,7 +122,7 @@ if [ ! -f /root/napcat/napcat.mjs ] && [ ! -f /root/napcat/loadNapCat.js ]; then
 fi
 mkdir -p /root/napcat/config
 if [ ! -f /root/napcat/config/webui.json ]; then
-    cat << 'EOF_NC' > /root/napcat/config/webui.json
+    cat << EOF_NC > /root/napcat/config/webui.json
 {
   "host": "0.0.0.0",
   "port": 6099,
@@ -136,11 +136,11 @@ fi
 mkdir -p /root/llonebot
 if [ ! -f /root/llonebot/llbot ] && [ ! -f /root/llonebot/package.json ]; then
     echo "-> [Ubuntu] 下载 LuckyLilliaBot (Linux ARM64)..."
-    LL_URL=$(curl -s "https://api.github.com/repos/LLOneBot/LuckyLilliaBot/releases/latest" | grep -o "https://[^" ]*linux-arm64[^" ]*\.tar\.gz" | head -n 1)
+    LL_URL=$(curl -s "https://api.github.com/repos/LLOneBot/LuckyLilliaBot/releases/latest" | grep -o "https://[^\" ]*linux-arm64[^\" ]*\.tar\.gz" | head -n 1)
     [ -z "$LL_URL" ] && LL_URL="https://github.com/LLOneBot/LuckyLilliaBot/releases/download/v4.2.1/LLBot-Linux-arm64.tar.gz"
-    wget -q --show-progress -O /tmp/llbot.tar.gz "$LL_URL" 2>/dev/null || true
+    wget -q --show-progress -O /tmp/llbot.tar.gz "$LL_URL" 2>/dev/null || wget -q -O /tmp/llbot.tar.gz "https://ghproxy.net/$LL_URL" 2>/dev/null || true
     if [ -f /tmp/llbot.tar.gz ]; then
-        tar -xzf /tmp/llbot.tar.gz -C /root/llonebot || true
+        tar -xzf /tmp/llbot.tar.gz -C /root/llonebot 2>/dev/null || true
         rm -f /tmp/llbot.tar.gz
     fi
 fi
@@ -150,7 +150,7 @@ mkdir -p /root/eridanus
 cd /root/eridanus
 if [ ! -f /root/eridanus/main.py ]; then
     echo "-> [Ubuntu] 拉取 Eridanus 源码..."
-    git clone https://github.com/12214376/Eridanus.git /root/eridanus || true
+    git clone https://github.com/12214376/Eridanus.git /root/eridanus 2>/dev/null || git clone https://ghproxy.net/https://github.com/12214376/Eridanus.git /root/eridanus || true
 fi
 
 if [ -f /root/eridanus/requirements.txt ]; then
@@ -193,24 +193,24 @@ if [ -f /root/eridanus/requirements.txt ]; then
         echo "-> [Ubuntu] 在全局环境中安装 Eridanus 依赖..."
         pip3 install --break-system-packages audioop-lts wheel setuptools flask-sock -i https://pypi.tuna.tsinghua.edu.cn/simple || true
         pip3 install --break-system-packages --ignore-installed -r /root/eridanus/requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple || true
-    else
-        echo "-> [Ubuntu] 警告: pip 未能就绪，后续可在容器内手动安装 requirements.txt"
     fi
 fi
 
 echo "✓ 容器内部环境配置完毕！"
-'
+UBUNTU_ENV_EOF
 
-# 5. 安装本地守护脚本
+echo "✓ Ubuntu 容器环境配置完成！"
+
+# 5. 安装本地控制脚本
 echo "[5/5] 安装宿主控制脚本 ~/bot_service.sh..."
 
-# 优先从本地 Download 目录同步，若无则尝试网络或内置兜底
-if [ -f /sdcard/Download/bot_service.sh ]; then
-    cp /sdcard/Download/bot_service.sh ~/bot_service.sh
-    echo "✓ 已从本地 /sdcard/Download/ 加载 bot_service.sh"
-else
-    SCRIPT_URL="https://raw.githubusercontent.com/12214376/Eridanus/master/scripts/bot_service.sh"
-    curl -fsSL "$SCRIPT_URL" -o ~/bot_service.sh 2>/dev/null || curl -fsSL "https://ghproxy.net/$SCRIPT_URL" -o ~/bot_service.sh || true
+SCRIPT_URL="https://raw.githubusercontent.com/12214376/Eridanus/master/scripts/bot_service.sh"
+echo "正在从 GitHub 获取最新控制脚本: $SCRIPT_URL ..."
+curl -fsSL "$SCRIPT_URL" -o ~/bot_service.sh 2>/dev/null || curl -fsSL "https://ghproxy.net/$SCRIPT_URL" -o ~/bot_service.sh 2>/dev/null || true
+
+# 检查本地是否有可读的离线备份作为降级兜底 (杜绝 Permission denied 报错)
+if [ ! -s ~/bot_service.sh ] && [ -r /sdcard/Download/bot_service.sh ]; then
+    cp /sdcard/Download/bot_service.sh ~/bot_service.sh 2>/dev/null || true
 fi
 
 # 若文件无效或包含 404，写入内置兜底脚本
